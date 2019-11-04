@@ -4,7 +4,7 @@
 
 std::ifstream dictionaryFile;
 std::string const default_dictionary = "words.txt";
-std::string const default_listen_port = "127.0.0.1";
+std::string const default_listen_port = "2000";
 std::string listenPortString;
 std::string nameOfFile;
 std::__1::vector<std::string> words;
@@ -13,7 +13,6 @@ int listenPort;
 int onStart(int argc, char *argv[]){
 
 
-    listenPort = stoi(listenPortString);
 
 
 /* Running from command line:
@@ -21,6 +20,8 @@ int onStart(int argc, char *argv[]){
  * If dictionary file or port are passed in through
  * command line, use them. Otherwise, use defaults.
  * Defaults: words.txt
+ * argv1 file
+ * argv2 port
  */
 
 std::cout << ("\nOpening dictionary.");
@@ -32,8 +33,8 @@ std::cout << ("\nOpening dictionary.");
             std::cerr<<"Error opening file";
             exit(2);
         }
-    listenPortString = default_listen_port;
-    nameOfFile=argv[1];}
+        listenPort = stoi(default_listen_port);
+        nameOfFile=argv[1];}
 
     //user file user port
     else if(argc==3){
@@ -42,7 +43,14 @@ std::cout << ("\nOpening dictionary.");
         if(dictionaryFile.fail()){
             std::cerr<<"Error opening file";
             exit(3);}
-        listenPortString = argv[2];
+
+        listenPort = atoi(argv[2]);
+        //We can't use ports below 1024 and ports above 65535 don't exist.
+        if(listenPort < 1024 || listenPort > 65535){
+            printf("Port number is either too low(below 1024), or too high(above 65535).\n");
+            return -1;
+        }
+
     }
 
     //default file, default port
@@ -52,8 +60,10 @@ std::cout << ("\nOpening dictionary.");
         if(dictionaryFile.fail()){
             std::cerr<<"Error opening file";
             exit(4);}
-        listenPortString = default_listen_port;
+        listenPort = stoi(default_listen_port);
+
     }
+
 
     //A vector of type string will be used to
     // store dictionary in memory

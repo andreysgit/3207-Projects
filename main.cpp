@@ -60,8 +60,10 @@ int open_listenfd(int port)
 
 int main(int argc, char *argv[]) {
 
-    onStart(argc,argv); //Settings init: int listenport, vector<string> words
-
+    onStart(argc,argv); //Settings init: int listenPort, vector<string> words
+    std::cout << "\nListening on port: ";
+    std::cout << listenPort;
+    std::cout << "\n";
 
     //Create a listening socket on the specified port
     int listen_socket;

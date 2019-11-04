@@ -3,6 +3,7 @@
     <words>
       <w>hallaron</w>
       <w>listenfd</w>
+      <w>listenport</w>
       <w>serveraddr</w>
     </words>
   </dictionary>
