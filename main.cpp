@@ -2,26 +2,61 @@
 #include <fstream>
 #include <string>
 #include <vector>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <zconf.h>
+#include <pthread.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <algorithm>
 #include <stdio.h>
 #define BUF_LEN 512
+#define JOB_MAX 20
+#define NUM_WORKERS 10
+#define LOG_MAX 20
 
+pthread_mutex_t job_mutex, log_mutex;
+pthread_cond_t log_wait,log_signal;
+pthread_cond_t job_wait, job_signal;
 std::ifstream dictionaryFile;
 std::string const default_dictionary = "words.txt";
 std::string const default_listen_port = "2000";
 std::string listenPortString;
 std::string nameOfFile;
 std::__1::vector<std::string> words;
+std::string log_buf[LOG_MAX];
+
 int listenPort;
 int num_workers;
+int job_buf[JOB_MAX];
+int job_buffer_count=0;
+int log_buffer_count=0;
+int job_buffer_front=0;
+int log_buffer_front=0;
+int job_buffer_rear=0;
+int log_buffer_rear=0;
 
+void addToJobQueue(){
+    pthread_mutex_lock(&job_mutex);
+    while(job_buffer_count==JOB_MAX){
+        pthread_cond_wait(&job_wait,&job_mutex);
+    }
+}
+
+void addToLogQueue(){
+    pthread_mutex_lock(&log_mutex);
+    while(job_buffer_count==JOB_MAX){
+        pthread_cond_wait(&log_wait,&log_mutex);
+    }
+}
+
+void init_pthreads(){
+pthread_mutex_init(&job_mutex,NULL);
+pthread_mutex_init(&log_mutex,NULL);
+pthread_cond_init(&log_wait,NULL);
+pthread_cond_init(&log_signal,NULL);
+pthread_cond_init(&job_signal,NULL);
+pthread_cond_init(&job_wait,NULL);
+
+}
 
 bool word_lookup(std::string word){
     //Searches vector table for input string
@@ -46,7 +81,6 @@ int onStart(int argc, char *argv[]){
  * argv1 file
  * argv2 port
  */
-
 
     std::cout << ("\nOpening dictionary.");
 
@@ -171,6 +205,7 @@ int main(int argc, char *argv[]) {
 
     onStart(argc,argv);
     //Settings init: int listenPort, vector<string> words, dictionary file open
+    init_pthreads();
 
     word_lookup("bananas");
 
@@ -200,6 +235,7 @@ int main(int argc, char *argv[]) {
         //the connected user.
 
         if((clientSocket = accept(connected_socket, (struct sockaddr*)&client, reinterpret_cast<socklen_t *>(&clientLen))) == -1){
+
             printf("Error connecting to client.\n");
             return -1;
         }
