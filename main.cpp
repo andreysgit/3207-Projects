@@ -7,7 +7,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <algorithm>
-#include <stdio.h>
+#include <zconf.h>
+
 #define BUF_LEN 512
 #define JOB_MAX 20
 #define NUM_WORKERS 10
@@ -19,13 +20,11 @@ pthread_cond_t job_wait, job_signal;
 std::ifstream dictionaryFile;
 std::string const default_dictionary = "words.txt";
 std::string const default_listen_port = "2000";
-std::string listenPortString;
 std::string nameOfFile;
 std::__1::vector<std::string> words;
 std::string log_buf[LOG_MAX];
 
 int listenPort;
-int num_workers;
 int job_buf[JOB_MAX];
 int job_buffer_count=0;
 int log_buffer_count=0;
@@ -33,6 +32,7 @@ int job_buffer_front=0;//front is for input
 int log_buffer_front=0;
 int job_buffer_rear=0; //rear is for output
 int log_buffer_rear=0;
+
 
 void addToJobQueue(int socketfd){
     //producer
@@ -64,8 +64,27 @@ int processJobQueue(){
         job_buffer_rear=0;
     }
     job_buffer_count--;
+    return returnSocket;
+}
+
+std::string processLogQueue(){
+    //consumer
+
+    std::string nextString;
+    pthread_mutex_lock(&log_mutex);
+    while(log_buffer_count==0){
+        pthread_cond_wait(&log_wait,&log_mutex);
+    }
+    nextString = log_buf[log_buffer_rear];
+    log_buffer_rear++;
+    if(log_buffer_rear==JOB_MAX){
+        log_buffer_rear=0;
+    }
+    log_buffer_count--;
+    return nextString;
 
 }
+
 
 void addToLogQueue(std::string word){
     pthread_mutex_lock(&log_mutex); //get lock
@@ -82,6 +101,21 @@ void addToLogQueue(std::string word){
     pthread_mutex_unlock(&log_mutex);
 }
 
+void* logger(void* redheadedsteparg){
+    std::string logEntry;
+//    FILE* logFilePointer = fopen("log.txt","w");
+std::ofstream logFile;
+logFile.open("log.txt",std::ios::out|std::ios::trunc);
+logFile.close();
+    while(1){
+        logFile.open("log.txt",std::ios::out|std::ios::app);
+        logEntry=processLogQueue();
+        logFile<<logEntry;
+
+    }
+
+}
+
 void init_pthreads(){
 pthread_mutex_init(&job_mutex,NULL);
 pthread_mutex_init(&log_mutex,NULL);
@@ -91,6 +125,8 @@ pthread_cond_init(&job_signal,NULL);
 pthread_cond_init(&job_wait,NULL);
 
 }
+
+
 
 bool word_lookup(std::string word){
     //Searches vector table for input string
@@ -241,7 +277,7 @@ int main(int argc, char *argv[]) {
     //Settings init: int listenPort, vector<string> words, dictionary file open
     init_pthreads();
 
-    word_lookup("bananas");
+    pthread_t worker[NUM_WORKERS];
 
 
     struct sockaddr_in client;
@@ -274,8 +310,8 @@ int main(int argc, char *argv[]) {
             return -1;
         }
 
-        const char* clientMessage = "Hello! I hope you can see this.\n";
-        const char* msgRequest = "Send me some text and I'll respond with something interesting!\nSend the escape key to close the connection.\n";
+        const char* clientMessage = "Hello! This is your friendly networking spell checker.\n";
+        const char* msgRequest = "Send a word for me to look up!\nSend the escape key to close the connection.\n";
         const char* msgResponse = "I actually don't have anything interesting to say...but I know you sent ";
         const char* msgPrompt = ">>>";
         const char* msgError = "I didn't get your message. ):\n";
@@ -287,39 +323,33 @@ int main(int argc, char *argv[]) {
         send(clientSocket, clientMessage, strlen(clientMessage), 0);
         send(clientSocket, msgRequest, strlen(msgRequest), 0);
 
+        while(1){
+            send(clientSocket, msgPrompt, strlen(msgPrompt), 0);
+            //recv() will store the message from the user in the buffer, returning
+            //how many bytes we received.
+            bytesReturned = recv(clientSocket, recvBuffer, BUF_LEN, 0);
 
-//        add connected_socket to the work queue;
-//        signal any sleeping workers that there's a new socket in the queue;
+            //Check if we got a message, send a message back or quit if the
+            //user specified it.
+            if(bytesReturned == -1){
+                send(clientSocket, msgError, strlen(msgError), 0);
+            }
+                //'27' is the escape key.
+            else if(recvBuffer[0] == 27){
+                send(clientSocket, msgClose, strlen(msgClose), 0);
+                close(clientSocket);
+                break;
+            }
+            else{
+                send(clientSocket, msgResponse, strlen(msgResponse), 0);
+                send(clientSocket, recvBuffer, bytesReturned, 0);
+            }
+        }
+
     }
 
 
 
-        //Create a listening socket on the specified port
-
-
-        //Begin sending and receiving messages.
-//        while(1){
-//            send(clientSocket, msgPrompt, strlen(msgPrompt), 0);
-//            //recv() will store the message from the user in the buffer, returning
-//            //how many bytes we received.
-//            bytesReturned = recv(clientSocket, recvBuffer, BUF_LEN, 0);
-//
-//            //Check if we got a message, send a message back or quit if the
-//            //user specified it.
-//            if(bytesReturned == -1){
-//                send(clientSocket, msgError, strlen(msgError), 0);
-//            }
-//                //'27' is the escape key.
-//            else if(recvBuffer[0] == 27){
-//                send(clientSocket, msgClose, strlen(msgClose), 0);
-//                close(clientSocket);
-//                break;
-//            }
-//            else{
-//                send(clientSocket, msgResponse, strlen(msgResponse), 0);
-//                send(clientSocket, recvBuffer, bytesReturned, 0);
-//            }
-//        }
 
 
         return 0;
