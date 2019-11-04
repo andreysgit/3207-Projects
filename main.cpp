@@ -9,6 +9,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <algorithm>
+#include <stdio.h>
 #define BUF_LEN 512
 
 std::ifstream dictionaryFile;
@@ -21,6 +23,19 @@ int listenPort;
 int num_workers;
 
 
+bool word_lookup(std::string word){
+    //Searches vector table for input string
+    std::cout<<"\nSearching for element: " << word;
+    if(std::find(words.begin(),words.end(),word)!=words.end()){
+        std::cout << "\nElement found";
+        return true;
+    }
+    else{
+        std::cout<< "\nno match";
+        return false;
+    }
+}
+
 int onStart(int argc, char *argv[]){
 
 /* Running from command line:
@@ -32,12 +47,7 @@ int onStart(int argc, char *argv[]){
  * argv2 port
  */
 
-    std::ifstream dictionaryFile;
-    std::string const default_dictionary = "words.txt";
-    std::string const default_listen_port = "2000";
-    std::string listenPortString;
-    std::string nameOfFile;
-    std::__1::vector<std::string> words;
+
     std::cout << ("\nOpening dictionary.");
 
     //user file, default port
@@ -83,22 +93,22 @@ int onStart(int argc, char *argv[]){
     // store dictionary in memory
     std::string line="";
 
-
     if(dictionaryFile.is_open()){
 
-        std::cout << "\nFile open.";
-        std::cout << "\nName of file: ";
+        std::cout << "\nDictionary has been opened.";
+        std::cout << "\nName of dictionary file: ";
         std::cout << nameOfFile;
         while(std::__1::getline(dictionaryFile, line)){
             words.push_back(line);
         }
 
-        std::cout << "\nFirst 10 words:\n";
-
-        for (int i = 0; i < 10; ++i) {
-            std::cout << words[i];
-            std::cout << "\n";
-        }
+//        used for early testing
+//        std::cout << "\nFirst 10 words:\n";
+//
+//        for (int i = 0; i < 10; ++i) {
+//            std::cout << words[i];
+//            std::cout << "\n";
+//        }
     }
 
 
@@ -159,34 +169,27 @@ int open_listenfd(int port)
 
 int main(int argc, char *argv[]) {
 
-    onStart(argc,argv); //Settings init: int listenPort, vector<string> words
+    onStart(argc,argv);
+    //Settings init: int listenPort, vector<string> words, dictionary file open
+
+    word_lookup("bananas");
 
 
-        struct sockaddr_in client;
-        int clientLen = sizeof(client);
-        int connected_socket, clientSocket, bytesReturned;
-        char recvBuffer[BUF_LEN];
-        recvBuffer[0] = '\0';
+    struct sockaddr_in client;
+    int clientLen = sizeof(client);
+    int connected_socket, clientSocket, bytesReturned;
+    char recvBuffer[BUF_LEN];
+    recvBuffer[0] = '\0';
 
+    if ((connected_socket = open_listenfd(listenPort)) < 0) {
+        perror("Couldn't open listening socket");
+        exit(EXIT_FAILURE);
+    }
         std::cout << "\nListening on port: ";
         std::cout << listenPort;
         std::cout << "\n";
 
-
     while (true) {
-        if ((connected_socket = open_listenfd(listenPort)) < 0) {
-            perror("Couldn't open listening socket");
-            exit(EXIT_FAILURE);
-        }
-
-//        add connected_socket to the work queue;
-//        signal any sleeping workers that there's a new socket in the queue;
-    }
-
-
-
-        //Create a listening socket on the specified port
-
 
         //accept() waits until a user connects to the server, writing information about that server
         //into the sockaddr_in client.
@@ -195,13 +198,12 @@ int main(int argc, char *argv[]) {
         //One by the server to listen for incoming connections.
         //The second that was just created that will be used to communicate with
         //the connected user.
+
         if((clientSocket = accept(connected_socket, (struct sockaddr*)&client, reinterpret_cast<socklen_t *>(&clientLen))) == -1){
             printf("Error connecting to client.\n");
             return -1;
         }
 
-
-        std::cout << "Connection success!";
         const char* clientMessage = "Hello! I hope you can see this.\n";
         const char* msgRequest = "Send me some text and I'll respond with something interesting!\nSend the escape key to close the connection.\n";
         const char* msgResponse = "I actually don't have anything interesting to say...but I know you sent ";
@@ -216,29 +218,38 @@ int main(int argc, char *argv[]) {
         send(clientSocket, msgRequest, strlen(msgRequest), 0);
 
 
-        //Begin sending and receiving messages.
-        while(1){
-            send(clientSocket, msgPrompt, strlen(msgPrompt), 0);
-            //recv() will store the message from the user in the buffer, returning
-            //how many bytes we received.
-            bytesReturned = recv(clientSocket, recvBuffer, BUF_LEN, 0);
+//        add connected_socket to the work queue;
+//        signal any sleeping workers that there's a new socket in the queue;
+    }
 
-            //Check if we got a message, send a message back or quit if the
-            //user specified it.
-            if(bytesReturned == -1){
-                send(clientSocket, msgError, strlen(msgError), 0);
-            }
-                //'27' is the escape key.
-            else if(recvBuffer[0] == 27){
-                send(clientSocket, msgClose, strlen(msgClose), 0);
-                close(clientSocket);
-                break;
-            }
-            else{
-                send(clientSocket, msgResponse, strlen(msgResponse), 0);
-                send(clientSocket, recvBuffer, bytesReturned, 0);
-            }
-        }
+
+
+        //Create a listening socket on the specified port
+
+
+        //Begin sending and receiving messages.
+//        while(1){
+//            send(clientSocket, msgPrompt, strlen(msgPrompt), 0);
+//            //recv() will store the message from the user in the buffer, returning
+//            //how many bytes we received.
+//            bytesReturned = recv(clientSocket, recvBuffer, BUF_LEN, 0);
+//
+//            //Check if we got a message, send a message back or quit if the
+//            //user specified it.
+//            if(bytesReturned == -1){
+//                send(clientSocket, msgError, strlen(msgError), 0);
+//            }
+//                //'27' is the escape key.
+//            else if(recvBuffer[0] == 27){
+//                send(clientSocket, msgClose, strlen(msgClose), 0);
+//                close(clientSocket);
+//                break;
+//            }
+//            else{
+//                send(clientSocket, msgResponse, strlen(msgResponse), 0);
+//                send(clientSocket, recvBuffer, bytesReturned, 0);
+//            }
+//        }
 
 
         return 0;
