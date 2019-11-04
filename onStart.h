@@ -7,11 +7,13 @@ std::string const default_dictionary = "words.txt";
 std::string const default_listen_port = "127.0.0.1";
 std::string listenPortString;
 std::string nameOfFile;
+std::__1::vector<std::string> words;
 int listenPort;
 
 int onStart(int argc, char *argv[]){
 
-//    listenPort = stoi(listenPortString);
+
+    listenPort = stoi(listenPortString);
 
 
 /* Running from command line:
@@ -55,7 +57,6 @@ std::cout << ("\nOpening dictionary.");
 
     //A vector of type string will be used to
     // store dictionary in memory
-    std::__1::vector<std::string> words;
     std::string line="";
 
 
