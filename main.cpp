@@ -29,12 +29,13 @@ int num_workers;
 int job_buf[JOB_MAX];
 int job_buffer_count=0;
 int log_buffer_count=0;
-int job_buffer_front=0;
+int job_buffer_front=0;//front is for input
 int log_buffer_front=0;
-int job_buffer_rear=0;
+int job_buffer_rear=0; //rear is for output
 int log_buffer_rear=0;
 
 void addToJobQueue(int socketfd){
+    //producer
     pthread_mutex_lock(&job_mutex); //get lock
     while(job_buffer_count==JOB_MAX){//while job buffer is full, wait
         pthread_cond_wait(&job_wait,&job_mutex);
@@ -47,6 +48,23 @@ void addToJobQueue(int socketfd){
 
     pthread_cond_signal(&job_signal);
     pthread_mutex_unlock(&job_mutex);
+}
+
+int processJobQueue(){
+    //consumer
+
+    int returnSocket = NULL;
+    pthread_mutex_lock(&job_mutex);
+    while(job_buffer_count==0){
+        pthread_cond_wait(&job_wait,&job_mutex);
+    }
+    returnSocket = job_buf[job_buffer_rear];
+    job_buffer_rear++;
+    if(job_buffer_rear==JOB_MAX){
+        job_buffer_rear=0;
+    }
+    job_buffer_count--;
+
 }
 
 void addToLogQueue(std::string word){
@@ -62,7 +80,6 @@ void addToLogQueue(std::string word){
 
     pthread_cond_signal(&log_signal);
     pthread_mutex_unlock(&log_mutex);
-
 }
 
 void init_pthreads(){
