@@ -3,4 +3,4 @@ project(NetworkSpellCheck)
 
 set(CMAKE_CXX_STANDARD 17)
 
-add_executable(NetworkSpellCheck main.cpp simpleserver.h)
+add_executable(NetworkSpellCheck main.cpp)

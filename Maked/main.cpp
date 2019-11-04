@@ -106,6 +106,10 @@ int onStart(int argc, char *argv[]){
     return 0;
 }
 
+int create_workers(int numWorkers){
+pthread_create(numWorkers);
+
+}
 
 
 //This section of code straight from
@@ -160,88 +164,83 @@ int open_listenfd(int port)
 int main(int argc, char *argv[]) {
 
     onStart(argc,argv); //Settings init: int listenPort, vector<string> words
+    create_workers(num_workers);
+
+    while (true) { connected_socket = accept(listening_socket);
+    add connected_socket to the work queue;
+    signal any sleeping workers that there's a new socket in the queue;}
 
 
-        struct sockaddr_in client;
-        int clientLen = sizeof(client);
-        int connected_socket, clientSocket, bytesReturned;
-        char recvBuffer[BUF_LEN];
-        recvBuffer[0] = '\0';
+    struct sockaddr_in client;
+    int clientLen = sizeof(client);
+    int listenSocket, clientSocket, bytesReturned;
+    char recvBuffer[BUF_LEN];
+    recvBuffer[0] = '\0';
 
         std::cout << "\nListening on port: ";
         std::cout << listenPort;
         std::cout << "\n";
 
+    //Create a listening socket on the specified port
+    if ((listenSocket = open_listenfd(listenPort)) < 0) {
+        perror("Couldn't open listening socket");
+        exit(EXIT_FAILURE);
+    }
 
-    while (true) {
-        if ((connected_socket = open_listenfd(listenPort)) < 0) {
-            perror("Couldn't open listening socket");
-            exit(EXIT_FAILURE);
-        }
-
-//        add connected_socket to the work queue;
-//        signal any sleeping workers that there's a new socket in the queue;
+    //accept() waits until a user connects to the server, writing information about that server
+    //into the sockaddr_in client.
+    //If the connection is successful, we obtain A SECOND socket descriptor.
+    //There are two socket descriptors being used now:
+    //One by the server to listen for incoming connections.
+    //The second that was just created that will be used to communicate with
+    //the connected user.
+    if((clientSocket = accept(listenSocket, (struct sockaddr*)&client, reinterpret_cast<socklen_t *>(&clientLen))) == -1){
+        printf("Error connecting to client.\n");
+        return -1;
     }
 
 
+    std::cout << "Connection success!";
+    const char* clientMessage = "Hello! I hope you can see this.\n";
+    const char* msgRequest = "Send me some text and I'll respond with something interesting!\nSend the escape key to close the connection.\n";
+    const char* msgResponse = "I actually don't have anything interesting to say...but I know you sent ";
+    const char* msgPrompt = ">>>";
+    const char* msgError = "I didn't get your message. ):\n";
+    const char* msgClose = "Goodbye!\n";
 
-        //Create a listening socket on the specified port
+    //send()...sends a message.
+    //We specify the socket we want to send, the message and it's length, the
+    //last parameter are flags.
+    send(clientSocket, clientMessage, strlen(clientMessage), 0);
+    send(clientSocket, msgRequest, strlen(msgRequest), 0);
 
 
-        //accept() waits until a user connects to the server, writing information about that server
-        //into the sockaddr_in client.
-        //If the connection is successful, we obtain A SECOND socket descriptor.
-        //There are two socket descriptors being used now:
-        //One by the server to listen for incoming connections.
-        //The second that was just created that will be used to communicate with
-        //the connected user.
-        if((clientSocket = accept(connected_socket, (struct sockaddr*)&client, reinterpret_cast<socklen_t *>(&clientLen))) == -1){
-            printf("Error connecting to client.\n");
-            return -1;
+    //Begin sending and receiving messages.
+    while(1){
+        send(clientSocket, msgPrompt, strlen(msgPrompt), 0);
+        //recv() will store the message from the user in the buffer, returning
+        //how many bytes we received.
+        bytesReturned = recv(clientSocket, recvBuffer, BUF_LEN, 0);
+
+        //Check if we got a message, send a message back or quit if the
+        //user specified it.
+        if(bytesReturned == -1){
+            send(clientSocket, msgError, strlen(msgError), 0);
         }
-
-
-        std::cout << "Connection success!";
-        const char* clientMessage = "Hello! I hope you can see this.\n";
-        const char* msgRequest = "Send me some text and I'll respond with something interesting!\nSend the escape key to close the connection.\n";
-        const char* msgResponse = "I actually don't have anything interesting to say...but I know you sent ";
-        const char* msgPrompt = ">>>";
-        const char* msgError = "I didn't get your message. ):\n";
-        const char* msgClose = "Goodbye!\n";
-
-        //send()...sends a message.
-        //We specify the socket we want to send, the message and it's length, the
-        //last parameter are flags.
-        send(clientSocket, clientMessage, strlen(clientMessage), 0);
-        send(clientSocket, msgRequest, strlen(msgRequest), 0);
-
-
-        //Begin sending and receiving messages.
-        while(1){
-            send(clientSocket, msgPrompt, strlen(msgPrompt), 0);
-            //recv() will store the message from the user in the buffer, returning
-            //how many bytes we received.
-            bytesReturned = recv(clientSocket, recvBuffer, BUF_LEN, 0);
-
-            //Check if we got a message, send a message back or quit if the
-            //user specified it.
-            if(bytesReturned == -1){
-                send(clientSocket, msgError, strlen(msgError), 0);
-            }
-                //'27' is the escape key.
-            else if(recvBuffer[0] == 27){
-                send(clientSocket, msgClose, strlen(msgClose), 0);
-                close(clientSocket);
-                break;
-            }
-            else{
-                send(clientSocket, msgResponse, strlen(msgResponse), 0);
-                send(clientSocket, recvBuffer, bytesReturned, 0);
-            }
+            //'27' is the escape key.
+        else if(recvBuffer[0] == 27){
+            send(clientSocket, msgClose, strlen(msgClose), 0);
+            close(clientSocket);
+            break;
         }
-
-
-        return 0;
+        else{
+            send(clientSocket, msgResponse, strlen(msgResponse), 0);
+            send(clientSocket, recvBuffer, bytesReturned, 0);
+        }
     }
+
+
+    return 0;
+}
 
 //#define LOG(x) std::cout << x << std::endl
