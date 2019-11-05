@@ -111,14 +111,14 @@ void addToLogQueue(std::string word){
 
 int word_lookup(std::string word){
     //Searches vector table for input string
-//    std::cout << "\nSearching for element: " << word;
+    std::cout << "\nSearching for element: " << word;
     if(std::find(words.begin(),words.end(),word)!=words.end()){
         std::cout << "\nElement found";
-        return 1;
+        return true;
     }
     else{
         std::cout<< "\nno match";
-        return 0;
+        return false;
     }
 }
 
@@ -150,7 +150,7 @@ void* worker(void* something) {
         bzero(&recvBuffer, BUF_LEN);
         result.clear();
         clientSocket = processJobQueue();
-        std::cout<<"Server processed job: " << clientSocket;
+        std::cout<<"Server is processing job: " << clientSocket;
         send(clientSocket,clientMessage,strlen(clientMessage),0);
         //recv() will store the message from the user in the buffer, returning
         //how many bytes we received.
@@ -170,7 +170,7 @@ void* worker(void* something) {
         else{
             for(int i = 0; i < (strlen(recvBuffer)-1); i++)
                 result = result + recvBuffer[i];
-            if(word_lookup(result)==1){
+            if(word_lookup(result)){
                 result=result + " ok";
                 send(clientSocket,result.data(),result.size(),0);
                 addToLogQueue(result);
@@ -324,6 +324,13 @@ int open_listenfd(int port)
 
 
 int main(int argc, char *argv[]) {
+
+    /*Spellcheck testing
+     std::string notaWord = "abc";
+     sc::spellcheck a(notaWord);
+     std::string actuallyaWord="mountains";
+     sc::spellcheck b(actuallyaWord);
+     */
 
     onStart(argc,argv);
     //Settings init: int listenPort, vector<string> words, dictionary file open

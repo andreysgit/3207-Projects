@@ -135,6 +135,7 @@ void* logger(void* redheadedsteparg){
     }
 }
 void* worker(void* something) {
+    const char* clientMessage = "Working from ";
     const char* clientMessage = "Send a word for me to look up!";
     const char* msgError = "I didn't get your message. ):\n";
     const char* msgClose = "Goodbye!\n";
@@ -151,6 +152,7 @@ void* worker(void* something) {
         result.clear();
         clientSocket = processJobQueue();
         std::cout<<"Server processed job: " << clientSocket;
+        send(clientSocket,clientMessage,strlen(clientMessage),0);
         send(clientSocket,clientMessage,strlen(clientMessage),0);
         //recv() will store the message from the user in the buffer, returning
         //how many bytes we received.
