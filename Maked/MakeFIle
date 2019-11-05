@@ -1,5 +1,5 @@
 main: main.o
-	g++ -o main main.o
+	g++ -o main main.o -pthread
 
 main.o: main.cpp
 	g++ -c main.cpp

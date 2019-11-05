@@ -2,23 +2,203 @@
 #include <fstream>
 #include <string>
 #include <vector>
-#include <sys/types.h>
+#include <pthread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <zconf.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#define BUF_LEN 512
+#include <algorithm>
+#include <cstring>
+#include <cstdlib>
+#include <unistd.h>
 
+#define BUF_LEN 512
+#define JOB_MAX 20
+#define NUM_WORKERS 10
+#define LOG_MAX 20
+
+pthread_mutex_t job_mutex, log_mutex;
+pthread_cond_t log_add,log_remove;
+pthread_cond_t job_add,job_remove;
 std::ifstream dictionaryFile;
 std::string const default_dictionary = "words.txt";
 std::string const default_listen_port = "2000";
-std::string listenPortString;
 std::string nameOfFile;
-std::__1::vector<std::string> words;
+std::vector<std::string> words;
+std::string log_buf[LOG_MAX];
+
+struct sockaddr_in client;
+unsigned int clientLen = sizeof(client);
+int connected_socket, clientSocket, bytesReturned;
 int listenPort;
-int num_workers;
+int job_buf[JOB_MAX];
+int job_buffer_count=0;
+int log_buffer_count=0;
+int job_buffer_front=0;//front is for input
+int log_buffer_front=0;
+int job_buffer_rear=0; //rear is for output
+int log_buffer_rear=0;
+
+
+void addToJobQueue(int socketfd){
+    //producer
+    pthread_mutex_lock(&job_mutex); //get lock
+    while(job_buffer_count==JOB_MAX){//while job buffer is full, wait
+        pthread_cond_wait(&job_add,&job_mutex);
+    }
+    job_buf[job_buffer_front]=socketfd;
+    job_buffer_count++;
+    job_buffer_front++;
+    if(job_buffer_front==JOB_MAX){
+        job_buffer_front=0;
+    }
+    pthread_cond_signal(&job_remove);
+    pthread_mutex_unlock(&job_mutex);
+}
+
+int processJobQueue(){
+    //consumer
+    int returnSocket;
+    pthread_mutex_lock(&job_mutex);
+    while(job_buffer_count==0){
+        pthread_cond_wait(&job_remove,&job_mutex);
+    }
+    returnSocket = job_buf[job_buffer_rear];
+    job_buffer_rear++;
+    if(job_buffer_rear==JOB_MAX){
+        job_buffer_rear=0;
+    }
+    job_buffer_count--;
+    pthread_cond_signal(&job_add);
+    pthread_mutex_unlock(&job_mutex);
+    return returnSocket;
+}
+
+std::string processLogQueue(){
+    //consumer
+
+    std::string nextString;
+    pthread_mutex_lock(&log_mutex);
+    while(log_buffer_count==0){
+        pthread_cond_wait(&log_remove,&log_mutex);
+    }
+    nextString = log_buf[log_buffer_rear];
+    log_buffer_rear++;
+    if(log_buffer_rear==JOB_MAX){
+        log_buffer_rear=0;
+    }
+    log_buffer_count--;
+    pthread_cond_signal(&log_add);
+    pthread_mutex_unlock(&log_mutex);
+    return nextString;
+
+}
+
+
+void addToLogQueue(std::string word){
+    pthread_mutex_lock(&log_mutex); //get lock
+    while(job_buffer_count==LOG_MAX){//while log buffer is full, wait
+        pthread_cond_wait(&log_add,&log_mutex);
+    }
+    log_buf[log_buffer_front]=word;
+    log_buffer_count++;
+    log_buffer_front++;
+    if(log_buffer_front==LOG_MAX){
+        log_buffer_front=0;
+    }
+
+    pthread_cond_signal(&log_remove);
+    pthread_mutex_unlock(&log_mutex);
+}
+
+int word_lookup(std::string word){
+    //Searches vector table for input string
+    std::cout << "\nSearching for element: " << word;
+    if(std::find(words.begin(),words.end(),word)!=words.end()){
+        std::cout << "\nElement found";
+        return true;
+    }
+    else{
+        std::cout<< "\nno match";
+        return false;
+    }
+}
+
+void* logger(void* redheadedsteparg){
+    std::string logEntry;
+    std::ofstream logFile;
+    logFile.open("log.txt",std::ios::out|std::ios::trunc);
+    logFile.close();
+    while(1){
+        logFile.open("log.txt",std::ios::out|std::ios::app);
+        logEntry=processLogQueue();
+        logFile<<logEntry << "\n";
+        logFile.close();
+    }
+}
+void* worker(void* something) {
+    const char* clientMessage = "Send a word for me to look up!";
+    const char* msgError = "I didn't get your message. ):\n";
+    const char* msgClose = "Goodbye!\n";
+    const char* ok = " Ok";
+    const char* misspelled = " Misspelled";
+    std::string result;
+    std::string response;
+    int clientSocket;
+    char receiveBuffer[BUF_LEN];
+    char recvBuffer[BUF_LEN];
+    recvBuffer[0] = '\0';
+    std::cout << "Worker thread made\n";
+    while(1){
+        bzero(&recvBuffer, BUF_LEN);
+        result.clear();
+        clientSocket = processJobQueue();
+        std::cout<<"Server is processing job: " << clientSocket;
+        send(clientSocket,clientMessage,strlen(clientMessage),0);
+        //recv() will store the message from the user in the buffer, returning
+        //how many bytes we received.
+        bytesReturned = recv(clientSocket, recvBuffer, BUF_LEN, 0);
+
+        //Check if we got a message, send a message back or quit if the
+        //user specified it.
+        if(bytesReturned == -1){
+            send(clientSocket, msgError, strlen(msgError), 0);
+        }
+            //'27' is the escape key.
+        else if(recvBuffer[0] == 27){
+            send(clientSocket, msgClose, strlen(msgClose), 0);
+            close(clientSocket);
+            break;
+        }
+        else{
+            for(int i = 0; i < (strlen(recvBuffer)-1); i++)
+                result = result + recvBuffer[i];
+            if(word_lookup(result)){
+                result=result + " ok";
+                send(clientSocket,result.data(),result.size(),0);
+                addToLogQueue(result);
+                close(clientSocket);
+            }
+            else{
+                result=result + " misspelled";
+                send(clientSocket,result.data(),result.size(),0);
+                addToLogQueue(result);
+                close(clientSocket);
+            }
+        }
+    }
+
+}
+
+
+void init_pthreads(){
+    pthread_mutex_init(&job_mutex,NULL);
+    pthread_mutex_init(&log_mutex,NULL);
+    pthread_cond_init(&log_add,NULL);
+    pthread_cond_init(&log_remove,NULL);
+    pthread_cond_init(&job_remove,NULL);
+    pthread_cond_init(&job_add,NULL);
+
+}
+
 
 
 int onStart(int argc, char *argv[]){
@@ -32,12 +212,6 @@ int onStart(int argc, char *argv[]){
  * argv2 port
  */
 
-    std::ifstream dictionaryFile;
-    std::string const default_dictionary = "words.txt";
-    std::string const default_listen_port = "2000";
-    std::string listenPortString;
-    std::string nameOfFile;
-    std::__1::vector<std::string> words;
     std::cout << ("\nOpening dictionary.");
 
     //user file, default port
@@ -83,22 +257,15 @@ int onStart(int argc, char *argv[]){
     // store dictionary in memory
     std::string line="";
 
-
     if(dictionaryFile.is_open()){
 
-        std::cout << "\nFile open.";
-        std::cout << "\nName of file: ";
+        std::cout << "\nDictionary has been opened.";
+        std::cout << "\nName of dictionary file: ";
         std::cout << nameOfFile;
-        while(std::__1::getline(dictionaryFile, line)){
+        while(std::getline(dictionaryFile, line)){
             words.push_back(line);
         }
 
-        std::cout << "\nFirst 10 words:\n";
-
-        for (int i = 0; i < 10; ++i) {
-            std::cout << words[i];
-            std::cout << "\n";
-        }
     }
 
 
@@ -106,10 +273,6 @@ int onStart(int argc, char *argv[]){
     return 0;
 }
 
-int create_workers(int numWorkers){
-pthread_create(numWorkers);
-
-}
 
 
 //This section of code straight from
@@ -163,83 +326,44 @@ int open_listenfd(int port)
 
 int main(int argc, char *argv[]) {
 
-    onStart(argc,argv); //Settings init: int listenPort, vector<string> words
-    create_workers(num_workers);
+    onStart(argc,argv);
+    //Settings init: int listenPort, vector<string> words, dictionary file open
+    init_pthreads();
 
-    while (true) { connected_socket = accept(listening_socket);
-    add connected_socket to the work queue;
-    signal any sleeping workers that there's a new socket in the queue;}
+    pthread_t workers[NUM_WORKERS];
+
+    pthread_create(&workers[0],NULL,worker,NULL);
+    pthread_create(&workers[1],NULL,logger,NULL);
+
+    if(pthread_create(&workers[0], NULL, worker, NULL) != 0)
+    {
+        std::cout << "Thread 1 creation error\n";
+    }
+    if(pthread_create(&workers[1], NULL, logger, NULL) != 0)
+    {
+        std::cout << "Thread 2 creation error\n";
+    }
 
 
-    struct sockaddr_in client;
-    int clientLen = sizeof(client);
-    int listenSocket, clientSocket, bytesReturned;
-    char recvBuffer[BUF_LEN];
-    recvBuffer[0] = '\0';
-
-        std::cout << "\nListening on port: ";
-        std::cout << listenPort;
-        std::cout << "\n";
-
-    //Create a listening socket on the specified port
-    if ((listenSocket = open_listenfd(listenPort)) < 0) {
+    if ((connected_socket = open_listenfd(listenPort)) < 0) {
         perror("Couldn't open listening socket");
         exit(EXIT_FAILURE);
     }
+    std::cout << "\nListening on port: ";
+    std::cout << listenPort;
+    std::cout << "\n";
 
-    //accept() waits until a user connects to the server, writing information about that server
-    //into the sockaddr_in client.
-    //If the connection is successful, we obtain A SECOND socket descriptor.
-    //There are two socket descriptors being used now:
-    //One by the server to listen for incoming connections.
-    //The second that was just created that will be used to communicate with
-    //the connected user.
-    if((clientSocket = accept(listenSocket, (struct sockaddr*)&client, reinterpret_cast<socklen_t *>(&clientLen))) == -1){
-        printf("Error connecting to client.\n");
-        return -1;
+    while (true) {
+        //accept() waits until a user connects to the server, writing information about that server
+        //into the sockaddr_in client.
+        if((clientSocket = accept(connected_socket, (struct sockaddr*)&client, &clientLen)) == -1){
+
+            printf("Error connecting to client.\n");
+            return -1;
+        }
+        std::cout << "Accepted client\n";
+        addToJobQueue(clientSocket);
     }
-
-
-    std::cout << "Connection success!";
-    const char* clientMessage = "Hello! I hope you can see this.\n";
-    const char* msgRequest = "Send me some text and I'll respond with something interesting!\nSend the escape key to close the connection.\n";
-    const char* msgResponse = "I actually don't have anything interesting to say...but I know you sent ";
-    const char* msgPrompt = ">>>";
-    const char* msgError = "I didn't get your message. ):\n";
-    const char* msgClose = "Goodbye!\n";
-
-    //send()...sends a message.
-    //We specify the socket we want to send, the message and it's length, the
-    //last parameter are flags.
-    send(clientSocket, clientMessage, strlen(clientMessage), 0);
-    send(clientSocket, msgRequest, strlen(msgRequest), 0);
-
-
-    //Begin sending and receiving messages.
-    while(1){
-        send(clientSocket, msgPrompt, strlen(msgPrompt), 0);
-        //recv() will store the message from the user in the buffer, returning
-        //how many bytes we received.
-        bytesReturned = recv(clientSocket, recvBuffer, BUF_LEN, 0);
-
-        //Check if we got a message, send a message back or quit if the
-        //user specified it.
-        if(bytesReturned == -1){
-            send(clientSocket, msgError, strlen(msgError), 0);
-        }
-            //'27' is the escape key.
-        else if(recvBuffer[0] == 27){
-            send(clientSocket, msgClose, strlen(msgClose), 0);
-            close(clientSocket);
-            break;
-        }
-        else{
-            send(clientSocket, msgResponse, strlen(msgResponse), 0);
-            send(clientSocket, recvBuffer, bytesReturned, 0);
-        }
-    }
-
-
     return 0;
 }
 
