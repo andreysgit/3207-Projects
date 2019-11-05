@@ -111,14 +111,14 @@ void addToLogQueue(std::string word){
 
 int word_lookup(std::string word){
     //Searches vector table for input string
-    std::cout << "\nSearching for element: " << word;
+//    std::cout << "\nSearching for element: " << word;
     if(std::find(words.begin(),words.end(),word)!=words.end()){
         std::cout << "\nElement found";
-        return true;
+        return 1;
     }
     else{
         std::cout<< "\nno match";
-        return false;
+        return 0;
     }
 }
 
@@ -143,7 +143,6 @@ void* worker(void* something) {
     std::string result;
     std::string response;
     int clientSocket;
-    char receiveBuffer[BUF_LEN];
     char recvBuffer[BUF_LEN];
     recvBuffer[0] = '\0';
     std::cout << "Worker thread made\n";
@@ -151,7 +150,7 @@ void* worker(void* something) {
         bzero(&recvBuffer, BUF_LEN);
         result.clear();
         clientSocket = processJobQueue();
-        std::cout<<"Server is processing job: " << clientSocket;
+        std::cout<<"Server processed job: " << clientSocket;
         send(clientSocket,clientMessage,strlen(clientMessage),0);
         //recv() will store the message from the user in the buffer, returning
         //how many bytes we received.
@@ -171,7 +170,7 @@ void* worker(void* something) {
         else{
             for(int i = 0; i < (strlen(recvBuffer)-1); i++)
                 result = result + recvBuffer[i];
-            if(word_lookup(result)){
+            if(word_lookup(result)==1){
                 result=result + " ok";
                 send(clientSocket,result.data(),result.size(),0);
                 addToLogQueue(result);
