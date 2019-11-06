@@ -12,9 +12,9 @@
 #include "spellcheck.h"
 
 #define BUF_LEN 512
-#define JOB_MAX 20
-#define NUM_WORKERS 10
-#define LOG_MAX 20
+#define JOB_MAX 3
+#define NUM_WORKERS 3
+#define LOG_MAX 3
 
 pthread_mutex_t job_mutex, log_mutex;
 pthread_cond_t log_add,log_remove;
@@ -38,9 +38,97 @@ int log_buffer_front=0;
 int job_buffer_rear=0; //rear is for output
 int log_buffer_rear=0;
 
+int testSpellCheck(){
+    std::string userInput;
+    std::string exitChar="x";
+    std::cout<<"Choose a word.\nType x to exit\n";
+    std::cin>>userInput;
+    std::cout<<userInput;
+    if (std::strcmp(userInput.data(),exitChar.data())==0){
+        return 0;
+    }
+    //word_lookup searches string vector table for input string
+    //until escape character is pressed
+            mydictionaryFile.open(testdefault_dictionary);
+            if(mydictionaryFile.fail()){
+                std::cerr<<"Error opening file";}
+
+            if(mydictionaryFile.is_open()) {
+                //init vector
+
+                std::cout << "\n\nDictionary has been opened.\n";
+                std::cout << "\nSearching for element: " << userInput << "\n";
+                while (std::getline(mydictionaryFile, testline)) {
+                    testwords.push_back(testline);
+                }
+            }
+            mydictionaryFile.close();
+            if(std::find(testwords.begin(),testwords.end(),userInput)!=testwords.end()){
+                std::cout << "\nYour word has been found\n\n";
+            }
+            else{
+                std::cout<< "\nNo match\n\n";
+            }
+    return 0;
+}
+
+int testInsertWhenFull(int socketfd){
+
+        //producer: places jobs into queue
+        pthread_mutex_lock(&job_mutex); //get job queue lock
+
+        //test insert job when full
+        if(job_buffer_count==JOB_MAX){
+            job_buf[job_buffer_front]=socketfd;
+            job_buffer_count++;}
+
+        while(job_buffer_count==JOB_MAX){//while job buffer is full, wait
+            pthread_cond_wait(&job_add,&job_mutex);
+        }
+        job_buf[job_buffer_front]=socketfd;
+        job_buffer_count++;
+        job_buffer_front++;
+        if(job_buffer_front==JOB_MAX){
+            job_buffer_front=0;
+        }
+        //ready for consumption
+        pthread_cond_signal(&job_remove);
+        //unlock
+        pthread_mutex_unlock(&job_mutex);
+    }
+
+int testRemoveWhenEmpty(){
+    //consumer
+    int returnSocket;
+    pthread_mutex_lock(&job_mutex);
+    if(job_buffer_count==0){
+        returnSocket = job_buf[job_buffer_rear];
+        job_buffer_rear++;
+    }
+    while(job_buffer_count==0){
+        pthread_cond_wait(&job_remove,&job_mutex);
+    }
+
+    if(job_buffer_rear==JOB_MAX){
+        job_buffer_rear=0;
+    }
+    job_buffer_count--;
+    pthread_cond_signal(&job_add);
+    pthread_mutex_unlock(&job_mutex);
+    std::string threadMessage("This thread fd: " + std::to_string(returnSocket) + "\n");
+    send(clientSocket,threadMessage.data(),threadMessage.size(),0);
+    return returnSocket;
+}
+
 void addToJobQueue(int socketfd){
     //producer: places jobs into queue
     pthread_mutex_lock(&job_mutex); //get job queue lock
+
+    //test insert job when full
+    if(job_buffer_count==JOB_MAX){
+        testInsertWhenFull(socketfd);
+    }
+
     while(job_buffer_count==JOB_MAX){//while job buffer is full, wait
         pthread_cond_wait(&job_add,&job_mutex);
     }
@@ -150,12 +238,11 @@ void* worker(void* something) {
     // std::cout << "\nWorker thread created\n";
     // std::cout << "\n thread: " << (char*)something << " is running";
 
-    //initialization
+    //preset messages to send to user
     const char* clientMessage = "Send a word for me to look up!\nPress escape to exit.\n";
     const char* msgError = "I didn't get your message. ):\n";
     const char* msgClose = "Goodbye!\n";
-    const char* ok = " Ok";
-    const char* misspelled = " Misspelled";
+
     std::string result;
     std::string response;
     int clientSocket;
@@ -350,73 +437,104 @@ int open_listenfd(int port)
 
     return listenfd;
 }
-void testSpellChecking(){
-    //checks two cases, one correct one incorrect
-    std::string notaWord = "abc";
-    sc::spellcheck a(notaWord);
-    std::string actuallyaWord="mountains";
-    sc::spellcheck b(actuallyaWord);
-}
-int testEchoServer(int argc, char *argv[]){
-    //a simple server that echos user message in return
-    const char* clientMessage = "Send a word!\n";
-    const char* msgError = "I didn't get your message\n";
-    std::string userString;
 
-    if(argc==2){
-        listenPort = atoi(argv[1]);
-        if(listenPort<2000){
-            listenPort+=2000;
+int testInsertWhenFull(int argc, char *argv[]){
+
+    onStart(argc,argv);
+    //Settings init: int listenPort, vector<string> words, dictionary file open
+
+
+    //create number of worker & logger threads based on arbitrary NUM_WORKERS
+    pthread_t workers[NUM_WORKERS];
+    for(int i=0;i<NUM_WORKERS;i++){
+        if(pthread_create(&workers[i],NULL,worker,NULL)!=0){
+            std::cout << "\n Worker thread creation error: " << i << "\n";
         }
-        std::cout<<argv[1];
-        //We can't use ports below 1024 and ports above 65535 don't exist.
-        if(listenPort < 1024 || listenPort > 65535){
-            printf("Port number is either too low(below 1024), or too high(above 65535).\n");
-            return -1;
+
+        //testing worker threads created
+        // else{
+        // std::cout <<"\nWorker thread " << i << " created successfully\n";
+        // }
+
+        if(pthread_create(&workers[i],NULL,logger,NULL)!=0){
+            std::cout << "\n Logger thread creation error: " << i << "\n";
         }
-    }
-    else{
-        listenPort=stoi(default_listen_port);
+        //testing logger threads created
+        //else{
+        // std::cout <<"\nLogger thread " << i << " created successfully\n";
+        // }
     }
 
-    char recvBuffer[BUF_LEN];
-
+    //starts listening on port
     if ((connected_socket = open_listenfd(listenPort)) < 0) {
         perror("Couldn't open listening socket");
         exit(EXIT_FAILURE);
-        return -1;
     }
-    if((clientSocket = accept(connected_socket, (struct sockaddr*)&client, &clientLen)) == -1){
+    std::cout << "\nListening on port: " << listenPort << "\n";
 
-        printf("Error connecting to client.\n");
-        return -1;
-    }
-    else{
-        while(1){
-            send(clientSocket,clientMessage,strlen(clientMessage),0);
-            //recv() will store the message from the user in the buffer, returning
-            // how many bytes we received.
-            bytesReturned = recv(clientSocket, recvBuffer, BUF_LEN, 0);
 
-            if(bytesReturned == -1){
-            send(clientSocket, msgError, strlen(msgError), 0);
-            }
-            //'27' is the escape key.
-            else if(recvBuffer[0] == 27){
-                close(clientSocket);
-                return 0;
-            }
-            else{
-                for(int i = 0; i < (strlen(recvBuffer)-1); i++){
-                    userString+=recvBuffer[i];
-                }
-                userString+="\n";
-                send(clientSocket, userString.data(), userString.size(), 0);
-                userString.clear();
-            }
+    //accept() waits in a loop until a user connects to the server
+    //writing information about that serv into the sockaddr_in client.
+    while (true) {
+
+        if((clientSocket = accept(connected_socket, (struct sockaddr*)&client, &clientLen)) == -1){
+            printf("Error connecting to client.\n");
+            return -1;
         }
+        std::cout << "\nAccepted client " << clientSocket << "\n";
+        testInsertWhenFull(clientSocket);
     }
 }
+
+int testRemoveWhenEmpty(int argc, char *argv[]){
+
+    onStart(argc,argv);
+    //Settings init: int listenPort, vector<string> words, dictionary file open
+
+
+    //create number of worker & logger threads based on arbitrary NUM_WORKERS
+    pthread_t workers[NUM_WORKERS];
+    for(int i=0;i<NUM_WORKERS;i++){
+        if(pthread_create(&workers[i],NULL,worker,NULL)!=0){
+            std::cout << "\n Worker thread creation error: " << i << "\n";
+        }
+
+        //testing worker threads created
+        // else{
+        // std::cout <<"\nWorker thread " << i << " created successfully\n";
+        // }
+
+        if(pthread_create(&workers[i],NULL,logger,NULL)!=0){
+            std::cout << "\n Logger thread creation error: " << i << "\n";
+        }
+        //testing logger threads created
+        //else{
+        // std::cout <<"\nLogger thread " << i << " created successfully\n";
+        // }
+    }
+
+    //starts listening on port
+    if ((connected_socket = open_listenfd(listenPort)) < 0) {
+        perror("Couldn't open listening socket");
+        exit(EXIT_FAILURE);
+    }
+    std::cout << "\nListening on port: " << listenPort << "\n";
+
+
+    //accept() waits in a loop until a user connects to the server
+    //writing information about that serv into the sockaddr_in client.
+    while (true) {
+
+        if((clientSocket = accept(connected_socket, (struct sockaddr*)&client, &clientLen)) == -1){
+            printf("Error connecting to client.\n");
+            return -1;
+        }
+        std::cout << "\nAccepted client " << clientSocket << "\n";
+        testRemoveWhenEmpty();
+    }
+}
+
+
 int normalFunctions(int argc, char *argv[]){
 
     onStart(argc,argv);
@@ -467,9 +585,37 @@ int normalFunctions(int argc, char *argv[]){
 
 int main(int argc, char *argv[]) {
 
-    normalFunctions(argc, argv);
-    //testSpellChecking();
-    //testEchoServer(argc,argv);
+    while(1){
+        std::cout<<"Choose a functionality:\n";
+        std::cout<<"1:Normal function\n";
+        std::cout<<"2:Echo Server\n";
+        std::cout<<"3:Server tries to remove job while empty\n";
+        std::cout<<"4:Server tries to add job while while\n";
+        std::cout<<"5:Simple spell check\n";
+
+        int userchoice;
+        std::cin >> userchoice;
+        if(userchoice==1){
+            normalFunctions(argc, argv);
+        }
+        else if(userchoice==2){
+            testEchoServer(argc,argv);
+        }
+        else if(userchoice==3){
+            testRemoveWhenEmpty();
+
+        }
+        else if(userchoice==4){
+            testInsertWhenFull(argc,argv);
+        }
+        else if(userchoice==5){
+            testSpellCheck();
+        }
+        else{
+            std::cout<<"user input error";
+        }
+    }
+
 
 return 0;
 }

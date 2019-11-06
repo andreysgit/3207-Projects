@@ -16,31 +16,7 @@ std::string testline="";
 namespace sc{
     class spellcheck {
     public:
-        explicit spellcheck(std::string word){
-        //word_lookup searches string vector table for input string
-        {
-                mydictionaryFile.open(testdefault_dictionary);
-            if(mydictionaryFile.fail()){
-                std::cerr<<"Error opening file";}
 
-            if(mydictionaryFile.is_open()) {//init vector
-                    std::cout << "\nDictionary has been opened.";
-                std::cout << "\nSearching for element: " << word;
-                while (std::getline(mydictionaryFile, testline)) {
-                        testwords.push_back(testline);
-                    }
-                }
-                mydictionaryFile.close();
-
-
-                if(std::find(testwords.begin(),testwords.end(),word)!=testwords.end()){
-                    std::cout << "\nElement found";
-                }
-                else{
-                    std::cout<< "\nno match";
-                }
-        }
-        }
     };
 }
 
