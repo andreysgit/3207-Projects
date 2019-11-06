@@ -34,3 +34,6 @@ Simpler echo server
 
 Many connections
 ![Portrait](https://github.com/Nephoros/3207-Projects/blob/master/Screen%20Shot%202019-11-05%20at%208.56.40%20PM.png)
+
+Logger threads logging
+![Portrait](https://github.com/Nephoros/3207-Projects/blob/master/Screen%20Shot%202019-11-06%20at%2012.24.18%20AM.png)
