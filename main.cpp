@@ -127,11 +127,6 @@ void addToJobQueue(int socketfd){
     //producer: places jobs into queue
     pthread_mutex_lock(&job_mutex); //get job queue lock
 
-    //test insert job when full
-    if(job_buffer_count==JOB_MAX){
-        testInsertWhenFull(socketfd);
-    }
-
     while(job_buffer_count==JOB_MAX){//while job buffer is full, wait
         pthread_cond_wait(&job_add,&job_mutex);
     }
@@ -146,7 +141,28 @@ void addToJobQueue(int socketfd){
     //unlock
     pthread_mutex_unlock(&job_mutex);
 }
+
 int processJobQueue(){
+    //consumer
+    int returnSocket;
+    pthread_mutex_lock(&job_mutex);
+    while(job_buffer_count==0){
+        pthread_cond_wait(&job_remove,&job_mutex);
+    }
+    returnSocket = job_buf[job_buffer_rear];
+    job_buffer_rear++;
+    if(job_buffer_rear==JOB_MAX){
+        job_buffer_rear=0;
+    }
+    job_buffer_count--;
+    pthread_cond_signal(&job_add);
+    pthread_mutex_unlock(&job_mutex);
+    std::string threadMessage("This thread fd: " + std::to_string(returnSocket) + "\n");
+    send(clientSocket,threadMessage.data(),threadMessage.size(),0);
+    return returnSocket;
+
+}
+int processJobQueueTest(){
     //consumer
     int returnSocket;
     pthread_mutex_lock(&job_mutex);
@@ -233,6 +249,88 @@ void* logger(void* redheadedsteparg){
         logFile<<logEntry << "\n";
         logFile.close();
     }
+}
+void* dummyworker(void* something) {
+    //communicates with client and calls word lookup method
+
+    //testing
+    // std::cout << "\nWorker thread created\n";
+    // std::cout << "\n thread: " << (char*)something << " is running";
+
+    //preset messages to send to user
+    const char* clientMessage = "Send a word for me to look up!\nPress escape to exit.\n";
+    const char* msgError = "I didn't get your message. ):\n";
+    const char* msgClose = "Goodbye!\n";
+
+    std::string result;
+    std::string response;
+    int clientSocket;
+    char recvBuffer[BUF_LEN];
+    recvBuffer[0] = '\0';
+
+    //talks to client
+    while(1){
+        bzero(&recvBuffer, BUF_LEN);
+        result.clear();
+        clientSocket = processJobQueueTest();
+        std::cout<<"\nServer is processing client id: " << clientSocket << "\n";
+        send(clientSocket,clientMessage,strlen(clientMessage),0);
+        //recv() will store the message from the user in the buffer, returning
+        //how many bytes we received.
+        bytesReturned = recv(clientSocket, recvBuffer, BUF_LEN, 0);
+
+        //Check if we got a message, send a message back or quit if the
+        //user specified it.
+        if(bytesReturned == -1){
+            send(clientSocket, msgError, strlen(msgError), 0);
+        }
+            //'27' is the escape key.
+        else if(recvBuffer[0] == 27){
+            send(clientSocket, msgClose, strlen(msgClose), 0);
+            std::cout<<"\nEscape character pressed, closing connection id: " << clientSocket << "\n";
+            close(clientSocket);
+            break;
+        }
+            //gets client word
+        else{
+            for(int i = 0; i < (strlen(recvBuffer)-2); i++){
+                //testing
+//                std::cout<<"\nresult = " << result;
+//                std::cout<<"\nrecvBuffer[i] = " << recvBuffer[i] << "\n";
+//                std::cout<<result;
+//                std::cout<<"\nnew result = " << result;
+                result+=recvBuffer[i];
+
+            }
+
+            //searches table for word
+            bool correct = word_lookup(result);
+
+            //testing
+            //std::cout << "bool correct: " << correct;
+
+            //dictionary contains user's word
+            if(correct){
+                result+= " eh?.. I found this word in my dictionary!\n";
+                send(clientSocket,result.data(),result.size(),0);
+                std::cout << "\nLogged to log.txt\n";
+                addToLogQueue(result);
+                std::cout << "\nClosing connection id " << clientSocket << "\n";
+                close(clientSocket);
+            }
+
+            //dictionary does not contain user's word
+            if(!correct){
+                result+= " eh?.. I think this word is misspelled\n";
+                send(clientSocket,result.data(),result.size(),0);
+                std::cout << "\nLogged to log.txt\n";
+                addToLogQueue(result);
+                std::cout << "\nClosing connection id " << clientSocket << "\n";
+                close(clientSocket);
+            }
+        }
+    }
+
 }
 void* worker(void* something) {
     //communicates with client and calls word lookup method
@@ -498,7 +596,7 @@ int testRemoveWhenEmpty(int argc, char *argv[]){
     //create number of worker & logger threads based on arbitrary NUM_WORKERS
     pthread_t workers[NUM_WORKERS];
     for(int i=0;i<NUM_WORKERS;i++){
-        if(pthread_create(&workers[i],NULL,worker,NULL)!=0){
+        if(pthread_create(&workers[i],NULL,dummyworker,NULL)!=0){
             std::cout << "\n Worker thread creation error: " << i << "\n";
         }
 
@@ -674,7 +772,7 @@ int main(int argc, char *argv[]) {
             testEchoServer(argc,argv);
         }
         else if(userchoice==3){
-            testRemoveWhenEmpty();
+            testRemoveWhenEmpty(argc,argv);
 
         }
         else if(userchoice==4){
