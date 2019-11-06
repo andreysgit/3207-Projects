@@ -15,7 +15,7 @@ Testing
 
 
 Opening a dictionary file
-![Portrait](https://github.com/Nephoros/3207-Projects/blob/master/Screen%20Shot%202019-11-03%20at%205.04.01%20PM.png?raw=true)
+![Portrait](https://github.com/Nephoros/3207-Projects/blob/master/Screen%20Shot%202019-11-03%20at%205.04.01%20PM.png?)
 
 Spell checking a word locally
 ![Portrait](https://github.com/Nephoros/3207-Projects/blob/master/Screen%20Shot%202019-11-05%20at%2010.04.41%20PM.png?raw=true)
@@ -32,5 +32,5 @@ echo server
 Simpler echo server
 ![Portrait](https://github.com/Nephoros/3207-Projects/blob/master/Screen%20Shot%202019-11-05%20at%2011.34.31%20PM.png?raw=true)
 
-Too many connections
+Many connections
 ![Portrait](https://github.com/Nephoros/3207-Projects/blob/master/Screen%20Shot%202019-11-05%20at%208.56.40%20PM.png)
