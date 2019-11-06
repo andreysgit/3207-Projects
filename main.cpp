@@ -11,9 +11,9 @@
 #include <unistd.h>
 
 #define BUF_LEN 512
-#define JOB_MAX 3
-#define NUM_WORKERS 3
-#define LOG_MAX 3
+#define JOB_MAX 10
+#define NUM_WORKERS 10
+#define LOG_MAX 10
 
 pthread_mutex_t job_mutex, log_mutex;
 pthread_cond_t log_add,log_remove;
