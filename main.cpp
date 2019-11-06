@@ -9,7 +9,6 @@
 #include <cstring>
 #include <cstdlib>
 #include <unistd.h>
-#include "spellcheck.h"
 
 #define BUF_LEN 512
 #define JOB_MAX 3
@@ -20,10 +19,13 @@ pthread_mutex_t job_mutex, log_mutex;
 pthread_cond_t log_add,log_remove;
 pthread_cond_t job_add,job_remove;
 std::ifstream dictionaryFile;
+std::ifstream testDictionaryFile;
 std::string const default_dictionary = "words.txt";
 std::string const default_listen_port = "2000";
 std::string nameOfFile;
 std::vector<std::string> words;
+std::vector<std::string> testwords;
+
 std::string log_buf[LOG_MAX];
 
 struct sockaddr_in client;
@@ -39,6 +41,7 @@ int job_buffer_rear=0; //rear is for output
 int log_buffer_rear=0;
 
 int testSpellCheck(){
+    std::string testline;
     std::string userInput;
     std::string exitChar="x";
     std::cout<<"Choose a word.\nType x to exit\n";
@@ -49,20 +52,20 @@ int testSpellCheck(){
     }
     //word_lookup searches string vector table for input string
     //until escape character is pressed
-            mydictionaryFile.open(testdefault_dictionary);
-            if(mydictionaryFile.fail()){
+            testDictionaryFile.open(default_dictionary);
+            if(testDictionaryFile.fail()){
                 std::cerr<<"Error opening file";}
 
-            if(mydictionaryFile.is_open()) {
+            if(testDictionaryFile.is_open()) {
                 //init vector
 
                 std::cout << "\n\nDictionary has been opened.\n";
                 std::cout << "\nSearching for element: " << userInput << "\n";
-                while (std::getline(mydictionaryFile, testline)) {
+                while (std::getline(testDictionaryFile, testline)) {
                     testwords.push_back(testline);
                 }
             }
-            mydictionaryFile.close();
+            testDictionaryFile.close();
             if(std::find(testwords.begin(),testwords.end(),userInput)!=testwords.end()){
                 std::cout << "\nYour word has been found\n\n";
             }
@@ -533,7 +536,76 @@ int testRemoveWhenEmpty(int argc, char *argv[]){
         testRemoveWhenEmpty();
     }
 }
+int testEchoServer(int argc, char *argv[]) {
+    //a simple server that echos user message in return
+    const char *clientMessage = "Send a word!\n";
+    const char *msgError = "I didn't get your message\n";
+    const char* msgClose = "Goodbye!\n";
+    char recvBuffer[BUF_LEN];
+    recvBuffer[0] = '\0';
+    std::string userString;
+    int clientSocket;
 
+    //can pass in a user port as second arg
+    if (argc == 2) {
+        listenPort = atoi(argv[1]);
+        if (listenPort < 2000) {
+            listenPort += 2000;
+        }
+        std::cout << argv[1];
+        //We can't use ports below 1024 and ports above 65535 don't exist.
+        if (listenPort < 1024 || listenPort > 65535) {
+            printf("Port number is either too low(below 1024), or too high(above 65535).\n");
+            return -1;
+        }
+    } else {
+        listenPort = stoi(default_listen_port);
+    }
+
+    if ((connected_socket = open_listenfd(listenPort)) < 0) {
+        perror("Couldn't open listening socket");
+        exit(EXIT_FAILURE);
+    }
+
+    while (true) {
+
+        //clear the buffer
+        bzero(&recvBuffer, BUF_LEN);
+
+        if((clientSocket = accept(connected_socket, (struct sockaddr*)&client, &clientLen)) == -1){
+            printf("Error connecting to client.\n");
+            return -1;
+        }
+        std::cout << "\nEcho client running\n";
+
+        send(clientSocket,clientMessage,strlen(clientMessage),0);
+
+        //Check if we got a message, send a message back or quit if the
+        //user specified it.
+
+        bytesReturned = recv(clientSocket, recvBuffer, BUF_LEN, 0);
+
+        if(bytesReturned == -1){
+            send(clientSocket, msgError, strlen(msgError), 0);
+        }
+
+        //'27' is the escape key.
+        else if(recvBuffer[0] == 27){
+            send(clientSocket, msgClose, strlen(msgClose), 0);
+            std::cout<<"\nEscape character pressed, closing connection id: " << clientSocket << "\n";
+            close(clientSocket);
+        }
+        else{
+            userString.clear();
+            for(int i = 0; i < (strlen(recvBuffer)-2); i++){
+                userString+=recvBuffer[i];
+            }
+            userString+="\n";
+
+        send(clientSocket,userString.data(),userString.size(),0);
+        userString.clear();
+    }}
+}
 
 int normalFunctions(int argc, char *argv[]){
 
